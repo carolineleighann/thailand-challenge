@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thailand Challenge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0f; color: #e8e0d5; font-family: 'DM Mono', monospace; min-height: 100vh; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .dc { transition: all 0.15s ease; cursor: pointer; }
+    .dc:hover { transform: scale(1.05); }
+    .pb { transition: all 0.2s ease; cursor: pointer; }
+    .pb:hover { transform: translateY(-1px); }
+    .tb { transition: all 0.2s ease; cursor: pointer; }
+    .tb:hover { opacity: 0.85; }
+    @keyframes fi { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fi { animation: fi 0.3s ease forwards; }
+    @keyframes sh { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+    .st {
+      background: linear-gradient(90deg,#c9a96e,#f0d9a0,#c9a96e,#e8c87a,#c9a96e);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: sh 4s linear infinite;
+    }
+    button { font-family: 'DM Mono', monospace; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const START_DATE = new Date(2026, 5, 1);
+    const TOTAL_DAYS = 45;
+    const MAX_DRINK_DAYS = 4;
+    const STORAGE_KEY = "thailand-challenge-v2";
+
+    function getDayNumber() {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const start = new Date(START_DATE); start.setHours(0,0,0,0);
+      return Math.floor((today - start) / (1000*60*60*24)) + 1;
+    }
+
+    function formatDate(dayNum) {
+      const d = new Date(START_DATE); d.setDate(d.getDate() + dayNum - 1);
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+
+    function formatDayOfWeek(dayNum, short = false) {
+      const d = new Date(START_DATE); d.setDate(d.getDate() + dayNum - 1);
+      return d.toLocaleDateString("en-US", { weekday: short ? "short" : "long" });
+    }
+
+    function App() {
+      const [days, setDays] = useState(() => {
+        try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : {}; }
+        catch { return {}; }
+      });
+      const [selectedDay, setSelectedDay] = useState(null);
+      const [view, setView] = useState("grid");
+      const [inputVals, setInputVals] = useState({ calories: "", steps: "", workout: false, drinks: 0 });
+      const [saveStatus, setSaveStatus] = useState(null);
+      const currentDay = getDayNumber();
+
+      useEffect(() => {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(days)); } catch {}
+      }, [days]);
+
+      function saveDay(dayNum, data) {
+        const updated = { ...days, [dayNum]: data };
+        setDays(updated);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          setSaveStatus("saved");
+        } catch {
+          setSaveStatus("error");
+        }
+        setTimeout(() => setSaveStatus(null), 2000);
+        setView("grid");
+        setSelectedDay(null);
+      }
+
+      function openDay(dayNum) {
+        if (dayNum > TOTAL_DAYS) return;
+        setInputVals(days[dayNum] || { calories: "", steps: "", workout: false, drinks: 0 });
+        setSelectedDay(dayNum);
+        setView("detail");
+      }
+
+      function getDayStatus(dayNum) {
+        if (dayNum > currentDay) return "future";
+        const d = days[dayNum];
+        if (!d) return "missed";
+        const drinks = d.drinks === "5+" ? 5 : (parseInt(d.drinks) || 0);
+        const checks = [
+          d.calories && parseInt(d.calories) <= 1900,
+          d.steps && parseInt(d.steps) >= 6000,
+          d.workout,
+          drinks <= 4,
+        ];
+        const passed = checks.filter(Boolean).length;
+        if (passed === 4) return "perfect";
+        if (passed >= 2) return "good";
+        return "partial";
+      }
+
+      const loggedDays = Object.keys(days).map(Number);
+      const totalLogged = loggedDays.length;
+      const perfectDays = loggedDays.filter(d => getDayStatus(d) === "perfect").length;
+      const workoutDays = loggedDays.filter(d => days[d]?.workout).length;
+      const drinkDaysUsed = loggedDays.filter(d => {
+        const dr = days[d]?.drinks;
+        return dr && dr !== 0 && dr !== "0";
+      }).length;
+      const totalDrinks = loggedDays.reduce((s, d) => s + (days[d]?.drinks === "5+" ? 5 : (parseInt(days[d]?.drinks) || 0)), 0);
+      const daysWithCals = loggedDays.filter(d => days[d]?.calories);
+      const avgCals = daysWithCals.length ? Math.round(daysWithCals.reduce((s, d) => s + parseInt(days[d].calories), 0) / daysWithCals.length) : null;
+      const daysRemaining = Math.max(0, TOTAL_DAYS - currentDay + 1);
+      const progressPct = Math.min(100, ((currentDay - 1) / TOTAL_DAYS) * 100);
+      const drinkDaysLeft = MAX_DRINK_DAYS - drinkDaysUsed;
+
+      const statusColors = {
+        future: { bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.08)", text: "#444" },
+        missed: { bg: "rgba(255,80,80,0.08)", border: "rgba(255,80,80,0.2)", text: "#ff6b6b" },
+        perfect: { bg: "rgba(82,255,168,0.12)", border: "rgba(82,255,168,0.4)", text: "#52ffa8" },
+        good: { bg: "rgba(255,210,80,0.1)", border: "rgba(255,210,80,0.3)", text: "#ffd250" },
+        partial: { bg: "rgba(255,140,50,0.08)", border: "rgba(255,140,50,0.25)", text: "#ff8c32" },
+      };
+
+      return (
+        <div style={{ minHeight: "100vh", background: "#0a0a0f", position: "relative" }}>
+          <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
+            background: "radial-gradient(ellipse at 20% 20%, rgba(201,169,110,0.04) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, rgba(82,255,168,0.03) 0%, transparent 60%)" }} />
+
+          <div style={{ position: "relative", zIndex: 1, maxWidth: 600, margin: "0 auto", padding: "32px 20px 60px" }}>
+
+            {/* Header */}
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              {saveStatus && (
+                <div style={{ marginBottom: 12, padding: "8px 16px", borderRadius: 8, fontSize: 11, letterSpacing: 1,
+                  background: saveStatus === "saved" ? "rgba(82,255,168,0.15)" : "rgba(255,107,107,0.15)",
+                  border: `1px solid ${saveStatus === "saved" ? "rgba(82,255,168,0.4)" : "rgba(255,107,107,0.4)"}`,
+                  color: saveStatus === "saved" ? "#52ffa8" : "#ff6b6b" }}>
+                  {saveStatus === "saved" ? "✓ Day saved" : "⚠ Save failed"}
+                </div>
+              )}
+              <div style={{ fontSize: 11, letterSpacing: 4, color: "#666", marginBottom: 12, textTransform: "uppercase" }}>45 Day Challenge</div>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 36, fontWeight: 700, lineHeight: 1.1, marginBottom: 6 }}>
+                <span className="st">Thailand</span>
+              </h1>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontStyle: "italic", fontSize: 14, color: "#888", marginBottom: 20 }}>Jun 1 — Jul 15, 2026</div>
+              <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 4, height: 4, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ height: "100%", width: `${progressPct}%`, background: "linear-gradient(90deg, #c9a96e, #52ffa8)", borderRadius: 4, transition: "width 0.5s ease" }} />
+              </div>
+              <div style={{ fontSize: 11, color: "#555", letterSpacing: 1 }}>
+                {currentDay < 1 ? `Starts in ${Math.abs(currentDay - 1)} days` :
+                 currentDay > TOTAL_DAYS ? "Challenge complete! 🎉" :
+                 `Day ${currentDay} of 45 · ${daysRemaining} days to Thailand`}
+              </div>
+            </div>
+
+            {/* Goals */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+              {[
+                { icon: "🥗", label: "Calories", goal: "≤1,900 avg/day" },
+                { icon: "💪", label: "Workouts", goal: "4x per week" },
+                { icon: "👟", label: "Steps", goal: "≥6,000/day" },
+                { icon: "🍷", label: "Alcohol", goal: "Max 4 days · 4 drinks/day" },
+              ].map((g, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 18 }}>{g.icon}</div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 1 }}>{g.label}</div>
+                    <div style={{ fontSize: 12, color: "#c9a96e", marginTop: 2 }}>{g.goal}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
+              {[
+                { label: "Logged", value: totalLogged, sub: "days" },
+                { label: "Perfect", value: perfectDays, sub: "days" },
+                { label: "Workouts", value: workoutDays, sub: `/ ${totalLogged}` },
+                { label: "Avg Cals", value: avgCals || "—", sub: avgCals ? "cal" : "" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px 8px", textAlign: "center" }}>
+                  <div style={{ fontSize: 22, fontWeight: 500, color: "#c9a96e", lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ fontSize: 9, color: "#555", marginTop: 4, letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
+                  {s.sub && <div style={{ fontSize: 9, color: "#444" }}>{s.sub}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Drink tracker */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase" }}>🍷 Drink days used</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", gap: 5 }}>
+                  {Array.from({ length: MAX_DRINK_DAYS }).map((_, i) => (
+                    <div key={i} style={{ width: 12, height: 12, borderRadius: "50%", background: i < drinkDaysUsed ? "#c9a96e" : "rgba(255,255,255,0.1)", border: i < drinkDaysUsed ? "none" : "1px solid rgba(255,255,255,0.15)" }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#888" }}>{drinkDaysLeft} left</div>
+                <div style={{ fontSize: 10, color: "#555" }}>· {totalDrinks} drinks total</div>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {[{ color: "#52ffa8", label: "All 4 ✓" }, { color: "#ffd250", label: "2–3 ✓" }, { color: "#ff8c32", label: "1 ✓" }, { color: "#ff6b6b", label: "Not logged" }].map((l, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#666" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: l.color }} />{l.label}
+                </div>
+              ))}
+            </div>
+
+            {/* Grid */}
+            {view === "grid" && (
+              <div className="fi" style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                {Array.from({ length: TOTAL_DAYS }, (_, i) => {
+                  const dayNum = i + 1;
+                  const status = getDayStatus(dayNum);
+                  const colors = statusColors[status];
+                  const isToday = dayNum === currentDay;
+                  const drinks = days[dayNum]?.drinks;
+                  const hasDrinks = drinks && drinks !== 0 && drinks !== "0";
+                  return (
+                    <div key={dayNum} className="dc" onClick={() => openDay(dayNum)} style={{ background: colors.bg, border: `1px solid ${isToday ? "#c9a96e" : colors.border}`, borderRadius: 8, padding: "8px 4px", textAlign: "center", boxShadow: isToday ? "0 0 12px rgba(201,169,110,0.3)" : "none" }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: isToday ? "#c9a96e" : colors.text }}>{dayNum}</div>
+                      <div style={{ fontSize: 8, color: "#555", marginTop: 2 }}>{formatDayOfWeek(dayNum, true)}</div>
+                      <div style={{ fontSize: 7, color: "#444", marginTop: 1 }}>{formatDate(dayNum)}</div>
+                      {status === "perfect" && <div style={{ fontSize: 8, marginTop: 2 }}>{hasDrinks ? "★🍷" : "★"}</div>}
+                      {hasDrinks && status !== "perfect" && <div style={{ fontSize: 7, color: "#c9a96e", marginTop: 2 }}>🍷{drinks}</div>}
+                      {isToday && status === "missed" && <div style={{ fontSize: 7, color: "#c9a96e", marginTop: 1 }}>NOW</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Detail */}
+            {view === "detail" && selectedDay && (
+              <div className="fi" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: 28 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#666", letterSpacing: 2, textTransform: "uppercase" }}>Day {selectedDay}</div>
+                    <div style={{ fontSize: 18, fontFamily: "'Playfair Display', serif", color: "#e8e0d5" }}>{formatDayOfWeek(selectedDay)} · {formatDate(selectedDay)}</div>
+                  </div>
+                  <button onClick={() => setView("grid")} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#888", fontSize: 12, padding: "6px 12px", cursor: "pointer" }}>← Back</button>
+                </div>
+
+                {/* Calories */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: "#888", letterSpacing: 2, textTransform: "uppercase", display: "block", marginBottom: 8 }}>🥗 Calories <span style={{ color: "#555" }}>(goal: ≤1900)</span></label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input type="number" placeholder="e.g. 1650" value={inputVals.calories} onChange={e => setInputVals(p => ({ ...p, calories: e.target.value }))}
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#e8e0d5", fontSize: 18, padding: "10px 14px", width: 140, outline: "none", fontFamily: "'DM Mono', monospace" }} />
+                    {inputVals.calories && <div style={{ fontSize: 12, color: parseInt(inputVals.calories) <= 1900 ? "#52ffa8" : "#ff6b6b", fontWeight: 500 }}>{parseInt(inputVals.calories) <= 1900 ? "✓ On track" : `+${parseInt(inputVals.calories) - 1900} over`}</div>}
+                  </div>
+                </div>
+
+                {/* Steps */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: "#888", letterSpacing: 2, textTransform: "uppercase", display: "block", marginBottom: 8 }}>👟 Steps <span style={{ color: "#555" }}>(goal: ≥6,000)</span></label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input type="number" placeholder="e.g. 7200" value={inputVals.steps} onChange={e => setInputVals(p => ({ ...p, steps: e.target.value }))}
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#e8e0d5", fontSize: 18, padding: "10px 14px", width: 140, outline: "none", fontFamily: "'DM Mono', monospace" }} />
+                    {inputVals.steps && <div style={{ fontSize: 12, color: parseInt(inputVals.steps) >= 6000 ? "#52ffa8" : "#ff6b6b" }}>{parseInt(inputVals.steps) >= 6000 ? "✓ Goal hit" : `${6000 - parseInt(inputVals.steps)} to go`}</div>}
+                  </div>
+                </div>
+
+                {/* Workout */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: "#888", letterSpacing: 2, textTransform: "uppercase", display: "block", marginBottom: 8 }}>💪 Workout</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {["Rest day", "Worked out!"].map((label, i) => (
+                      <div key={i} className="tb" onClick={() => setInputVals(p => ({ ...p, workout: i === 1 }))}
+                        style={{ padding: "10px 18px", borderRadius: 10, fontSize: 12,
+                          background: (i === 1 ? inputVals.workout : !inputVals.workout) ? (i === 1 ? "rgba(82,255,168,0.15)" : "rgba(255,255,255,0.06)") : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${(i === 1 ? inputVals.workout : !inputVals.workout) ? (i === 1 ? "rgba(82,255,168,0.4)" : "rgba(255,255,255,0.15)") : "rgba(255,255,255,0.06)"}`,
+                          color: (i === 1 ? inputVals.workout : !inputVals.workout) ? "#e8e0d5" : "#555" }}
+                      >{label}</div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Drinks */}
+                <div style={{ marginBottom: 28 }}>
+                  <label style={{ fontSize: 11, color: "#888", letterSpacing: 2, textTransform: "uppercase", display: "block", marginBottom: 8 }}>
+                    🍷 Drinks <span style={{ color: "#555" }}>(≤4/day · {drinkDaysLeft} drink day{drinkDaysLeft !== 1 ? "s" : ""} left)</span>
+                  </label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[0, 1, 2, 3, 4, "5+"].map((val) => {
+                      const isSelected = inputVals.drinks === val;
+                      const isOver = val === "5+";
+                      return (
+                        <div key={val} className="tb" onClick={() => setInputVals(p => ({ ...p, drinks: val }))}
+                          style={{ padding: "10px 14px", borderRadius: 10, fontSize: 13, minWidth: 48, textAlign: "center",
+                            background: isSelected ? (isOver ? "rgba(255,107,107,0.15)" : val === 0 ? "rgba(82,255,168,0.15)" : "rgba(201,169,110,0.15)") : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${isSelected ? (isOver ? "rgba(255,107,107,0.4)" : val === 0 ? "rgba(82,255,168,0.4)" : "rgba(201,169,110,0.4)") : "rgba(255,255,255,0.06)"}`,
+                            color: isSelected ? "#e8e0d5" : "#555" }}
+                        >{val === 0 ? "0 🚫" : val === "5+" ? "5+ ⚠️" : `${val} 🍷`}</div>
+                      );
+                    })}
+                  </div>
+                  {inputVals.drinks > 0 && inputVals.drinks !== "5+" && (
+                    <div style={{ fontSize: 11, color: "#52ffa8", marginTop: 8 }}>✓ Within limit — still counts toward a perfect day</div>
+                  )}
+                  {inputVals.drinks === "5+" && (
+                    <div style={{ fontSize: 11, color: "#ff6b6b", marginTop: 8 }}>Over the 4-drink limit — won't count as perfect</div>
+                  )}
+                </div>
+
+                <button className="pb" onClick={() => saveDay(selectedDay, inputVals)}
+                  style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #c9a96e, #e8c87a)", color: "#0a0a0f", fontSize: 13, fontWeight: 500, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'DM Mono', monospace" }}>
+                  Save Day {selectedDay}
+                </button>
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 36, fontSize: 10, color: "#333", letterSpacing: 2 }}>THAILAND · JULY 2026</div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
