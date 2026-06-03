@@ -83,7 +83,7 @@
     const START_DATE = new Date(2026, 5, 1);
     const TOTAL_DAYS = 45;
     const MAX_DRINK_DAYS = 4;
-    const STORAGE_KEY = "thailand-challenge-v4";
+    const STORAGE_KEY = "thailand-challenge-v5";
 
     function getDayNumber() {
       const today = new Date(); today.setHours(0,0,0,0);
@@ -148,15 +148,16 @@
         if (n > cur) return "future";
         const d = days[n]; if (!d) return "missed";
         const dr = d.drinks === "5+" ? 5 : (parseInt(d.drinks) || 0);
-        const ok = [
-          d.calories && parseInt(d.calories) <= 1900,
-          d.steps && parseInt(d.steps) >= 6000,
-          d.workout,
-          dr <= 4,
-        ];
-        const p = ok.filter(Boolean).length;
-        if (p === 4) return "perfect";
+        const caloriesOk = d.calories && parseInt(d.calories) <= 1900;
+        const stepsOk = d.steps && parseInt(d.steps) >= 6000;
+        const drinksOk = dr <= 4;
+        const hasCalories = !!d.calories;
+        const hasSteps = !!d.steps;
+        // Only perfect if both calories and steps were actually logged
+        if (caloriesOk && stepsOk && drinksOk) return "perfect";
+        const p = [caloriesOk, stepsOk, drinksOk && (hasCalories || hasSteps)].filter(Boolean).length;
         if (p >= 2) return "good";
+        if (p >= 1) return "partial";
         return "partial";
       }
 
@@ -174,6 +175,16 @@
       }, 0);
       const calDays = logged.filter(d => days[d]?.calories);
       const avgCals = calDays.length ? Math.round(calDays.reduce((s, d) => s + parseInt(days[d].calories), 0) / calDays.length) : null;
+      const stepDays = logged.filter(d => days[d]?.steps);
+      const avgSteps = stepDays.length ? Math.round(stepDays.reduce((s, d) => s + parseInt(days[d].steps), 0) / stepDays.length) : null;
+
+      // Weekly workout tracking
+      function getWeekWorkouts(dayNum) {
+        const weekStart = Math.floor((dayNum - 1) / 7) * 7 + 1;
+        const weekEnd = Math.min(weekStart + 6, TOTAL_DAYS);
+        return Array.from({ length: weekEnd - weekStart + 1 }, (_, i) => weekStart + i)
+          .filter(d => days[d]?.workout).length;
+      }
       const remaining = Math.max(0, TOTAL_DAYS - cur + 1);
       const pct = Math.min(100, ((cur - 1) / TOTAL_DAYS) * 100);
       const drinkDaysLeft = MAX_DRINK_DAYS - drinkDaysUsed;
@@ -231,12 +242,12 @@
             {/* ── RESULTS ── */}
             <div style={{ marginBottom: 36 }}>
               <div className="section-label">Results</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 10, gridAutoRows: "1fr" }}>
                 {[
-                  { label: "Days Logged",   value: totalLogged, sub: `of ${TOTAL_DAYS} total`,   color: "#3a86cc" },
-                  { label: "Perfect Days",  value: perfect,     sub: `of ${totalLogged} logged`, color: "#2e9e6b" },
-                  { label: "Workouts Done", value: workouts,    sub: "total",                    color: "#b07d20" },
-                  { label: "Avg Calories",  value: avgCals || "—", sub: avgCals ? "cal / day" : "not enough data", color: "#b04060" },
+                  { label: "Days Logged",   value: totalLogged,    sub: `of ${TOTAL_DAYS} total`,              color: "#3a86cc" },
+                  { label: "Workouts Done", value: workouts,       sub: "total · goal: 4x/week",              color: "#2e9e6b" },
+                  { label: "Avg Calories",  value: avgCals || "—", sub: avgCals ? "cal / day" : "no data yet", color: "#b04060" },
+                  { label: "Avg Steps",     value: avgSteps ? avgSteps.toLocaleString() : "—", sub: avgSteps ? "steps / day" : "no data yet", color: "#7a6aa0" },
                 ].map((r, i) => (
                   <div key={i} className="card" style={{ padding: "18px", textAlign: "center" }}>
                     <div style={{ fontSize: 34, fontWeight: 500, color: r.color, lineHeight: 1, marginBottom: 5 }}>{r.value}</div>
@@ -287,7 +298,8 @@
                     const c = STATUS[s];
                     const isToday = n === cur;
                     const dr = days[n]?.drinks;
-                    const hadDrinks = dr && parseInt(dr) > 0 && dr !== "0";
+                    const drinkVal = days[n]?.drinks;
+                    const hadDrinks = drinkVal !== undefined && drinkVal !== null && drinkVal !== 0 && drinkVal !== "0" && parseInt(drinkVal) > 0;
                     return (
                       <div key={n} className="dc" onClick={() => openDay(n)} style={{
                         background: c.bg,
@@ -298,8 +310,10 @@
                         <div style={{ fontSize: 13, fontWeight: 500, color: isToday ? "#8b6432" : c.text }}>{n}</div>
                         <div style={{ fontSize: 8, color: "#c0b8a8", marginTop: 2 }}>{fDay(n, true)}</div>
                         <div style={{ fontSize: 7, color: "#d0c8b8", marginTop: 1 }}>{fDate(n)}</div>
-                        {s === "perfect" && <div style={{ fontSize: 9, marginTop: 3, color: "#2e9e6b" }}>★</div>}
-                        {hadDrinks && <div style={{ fontSize: 8, marginTop: 2 }}>🍷</div>}
+                        <div style={{ fontSize: 9, marginTop: 3, minHeight: 14 }}>
+                          {days[n]?.workout && <span>💪</span>}
+                          {hadDrinks && <span>🍷</span>}
+                        </div>
                         {isToday && s === "missed" && <div style={{ fontSize: 7, color: "#c9a96e", marginTop: 2, fontWeight: 500 }}>TODAY</div>}
                       </div>
                     );
